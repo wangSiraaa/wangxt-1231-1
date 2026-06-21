@@ -32,6 +32,22 @@ class ResidentController extends Controller
             $resident->can_register_emergency = $resident->canRegisterEmergencyMaintenance();
             $resident->can_renew = $resident->canRenewLease();
             $resident->full_address = $resident->full_address;
+
+            if ($resident->activeLease) {
+                $leaseStatusMap = [1 => '有效', 2 => '已到期', 3 => '已终止', 4 => '续租中'];
+                $resident->active_lease_status = $resident->activeLease->status;
+                $resident->active_lease_status_label = $leaseStatusMap[$resident->activeLease->status] ?? '未知';
+                $resident->lease_end_date = $resident->activeLease->end_date;
+                $resident->is_lease_expiring = $resident->activeLease->isExpiring();
+                $resident->is_lease_overdue = $resident->activeLease->isOverdue();
+            } else {
+                $resident->active_lease_status = null;
+                $resident->active_lease_status_label = '无有效租约';
+                $resident->lease_end_date = null;
+                $resident->is_lease_expiring = false;
+                $resident->is_lease_overdue = false;
+            }
+
             return $resident;
         });
 
@@ -142,11 +158,82 @@ class ResidentController extends Controller
         $totalUnpaid = $arrears->sum('unpaid_amount');
         $threshold = config('system.arrears_threshold', 10000);
 
+        $breakdown = [
+            'rent' => 0,
+            'property_fee' => 0,
+            'water_fee' => 0,
+            'electric_fee' => 0,
+            'gas_fee' => 0,
+            'other_fee' => 0,
+            'late_fee' => 0,
+        ];
+
+        $overdueCount = 0;
+        $billPeriods = [];
+
+        foreach ($arrears as $arrear) {
+            $breakdown['rent'] += $arrear->rent_amount;
+            $breakdown['property_fee'] += $arrear->property_fee;
+            $breakdown['water_fee'] += $arrear->water_fee;
+            $breakdown['electric_fee'] += $arrear->electric_fee;
+            $breakdown['gas_fee'] += $arrear->gas_fee;
+            $breakdown['other_fee'] += $arrear->other_fee;
+            $breakdown['late_fee'] += $arrear->late_fee;
+
+            if ($arrear->isOverdue()) {
+                $overdueCount++;
+            }
+
+            if (!in_array($arrear->bill_period, $billPeriods)) {
+                $billPeriods[] = $arrear->bill_period;
+            }
+        }
+
+        $reasons = [];
+        if ($breakdown['rent'] > 0) $reasons[] = '租金';
+        if ($breakdown['property_fee'] > 0) $reasons[] = '物业费';
+        if ($breakdown['water_fee'] > 0) $reasons[] = '水费';
+        if ($breakdown['electric_fee'] > 0) $reasons[] = '电费';
+        if ($breakdown['gas_fee'] > 0) $reasons[] = '燃气费';
+        if ($breakdown['other_fee'] > 0) $reasons[] = '其他费用';
+        if ($breakdown['late_fee'] > 0) $reasons[] = '滞纳金';
+
+        $activeLease = $resident->activeLease;
+        $leaseInfo = null;
+        if ($activeLease) {
+            $leaseStatusMap = [1 => '有效', 2 => '已到期', 3 => '已终止', 4 => '续租中'];
+            $houseAddress = trim(implode('-', array_filter([$resident->building, $resident->unit, $resident->room])), '-');
+            $leaseInfo = [
+                'id' => $activeLease->id,
+                'lease_no' => $activeLease->lease_no,
+                'house_address' => $houseAddress ?: '未分配',
+                'start_date' => $activeLease->start_date,
+                'end_date' => $activeLease->end_date,
+                'status' => $activeLease->status,
+                'status_label' => $leaseStatusMap[$activeLease->status] ?? '未知',
+                'is_expiring' => $activeLease->isExpiring(),
+                'is_overdue' => $activeLease->isOverdue(),
+                'monthly_rent' => $activeLease->monthly_rent,
+            ];
+        }
+
+        sort($billPeriods);
+
         return response()->json([
             'arrears' => $arrears,
             'total_unpaid' => $totalUnpaid,
             'threshold' => $threshold,
             'exceeds_threshold' => $totalUnpaid > $threshold,
+            'breakdown' => $breakdown,
+            'arrear_reasons' => $reasons,
+            'arrear_reason_text' => implode('、', $reasons),
+            'overdue_count' => $overdueCount,
+            'bill_periods' => $billPeriods,
+            'bill_count' => count($arrears),
+            'earliest_period' => $billPeriods[0] ?? null,
+            'latest_period' => end($billPeriods) ?: null,
+            'lease' => $leaseInfo,
+            'can_renew' => $resident->canRenewLease(),
         ]);
     }
 

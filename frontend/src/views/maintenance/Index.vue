@@ -177,12 +177,103 @@
     <el-dialog v-model="createDialogVisible" title="新增维修工单" width="700px" destroy-on-close>
       <el-alert
         v-if="isEmergencyOnly"
-        title="该住户欠费金额已超过阈值，仅允许登记紧急维修事项"
         type="warning"
         show-icon
         :closable="false"
         style="margin-bottom: 20px"
-      />
+      >
+        <template #title>
+          <span class="alert-title">该住户欠费金额已超过阈值，仅允许登记紧急维修事项</span>
+        </template>
+        <div v-if="arrearsSummary" class="restriction-detail">
+          <div class="detail-row">
+            <span class="detail-label">欠费总额：</span>
+            <span class="detail-amount">{{ formatCurrency(arrearsSummary.total_unpaid) }}</span>
+            <span class="detail-sub">（阈值：{{ formatCurrency(arrearsSummary.threshold) }}）</span>
+          </div>
+          <div class="detail-row" v-if="arrearsSummary.arrear_reason_text">
+            <span class="detail-label">欠费原因：</span>
+            <div class="reason-tags">
+              <el-tag v-for="(reason, idx) in arrearsSummary.arrear_reasons" :key="idx" size="small" type="danger" effect="light">
+                {{ reason }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">欠费账单：</span>
+            <span>{{ arrearsSummary.bill_count }} 笔</span>
+            <el-tag v-if="arrearsSummary.overdue_count > 0" size="small" type="danger" effect="dark" style="margin-left: 8px">
+              逾期 {{ arrearsSummary.overdue_count }} 笔
+            </el-tag>
+          </div>
+          <div class="detail-row" v-if="arrearsSummary.earliest_period">
+            <span class="detail-label">账期范围：</span>
+            <span>{{ arrearsSummary.earliest_period }} 至 {{ arrearsSummary.latest_period }}</span>
+          </div>
+          <div class="detail-row" v-if="arrearsSummary.lease">
+            <span class="detail-label">租约状态：</span>
+            <el-tag
+              :type="getLeaseTagType(arrearsSummary.lease.status)"
+              size="small"
+            >
+              {{ arrearsSummary.lease.status_label }}
+            </el-tag>
+            <span v-if="arrearsSummary.lease.house_address" style="margin-left: 8px; color: #606266;">
+              {{ arrearsSummary.lease.house_address }}
+            </span>
+            <el-tag
+              v-if="arrearsSummary.lease.is_overdue"
+              size="small"
+              type="danger"
+              effect="dark"
+              style="margin-left: 8px"
+            >
+              租约已逾期
+            </el-tag>
+            <el-tag
+              v-else-if="arrearsSummary.lease.is_expiring"
+              size="small"
+              type="warning"
+              effect="light"
+              style="margin-left: 8px"
+            >
+              租约即将到期
+            </el-tag>
+          </div>
+          <div class="detail-row" v-if="arrearsSummary.breakdown">
+            <span class="detail-label">费用明细：</span>
+            <div class="breakdown-list">
+              <span v-if="arrearsSummary.breakdown.rent > 0">租金 {{ formatCurrency(arrearsSummary.breakdown.rent) }}</span>
+              <span v-if="arrearsSummary.breakdown.property_fee > 0">物业费 {{ formatCurrency(arrearsSummary.breakdown.property_fee) }}</span>
+              <span v-if="arrearsSummary.breakdown.water_fee > 0">水费 {{ formatCurrency(arrearsSummary.breakdown.water_fee) }}</span>
+              <span v-if="arrearsSummary.breakdown.electric_fee > 0">电费 {{ formatCurrency(arrearsSummary.breakdown.electric_fee) }}</span>
+              <span v-if="arrearsSummary.breakdown.gas_fee > 0">燃气费 {{ formatCurrency(arrearsSummary.breakdown.gas_fee) }}</span>
+              <span v-if="arrearsSummary.breakdown.other_fee > 0">其他 {{ formatCurrency(arrearsSummary.breakdown.other_fee) }}</span>
+              <span v-if="arrearsSummary.breakdown.late_fee > 0" class="late-fee">滞纳金 {{ formatCurrency(arrearsSummary.breakdown.late_fee) }}</span>
+            </div>
+          </div>
+        </div>
+      </el-alert>
+      <div v-else-if="arrearsSummary && arrearsSummary.total_unpaid > 0" class="arrears-notice" style="margin-bottom: 16px">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+        >
+          <template #title>
+            <span>该住户当前有欠费 {{ formatCurrency(arrearsSummary.total_unpaid) }}</span>
+            <span v-if="arrearsSummary.arrear_reason_text" style="margin-left: 8px; color: #909399;">
+              （{{ arrearsSummary.arrear_reason_text }}）
+            </span>
+            <span v-if="arrearsSummary.lease" style="margin-left: 8px;">
+              租约：
+              <el-tag :type="getLeaseTagType(arrearsSummary.lease.status)" size="small">
+                {{ arrearsSummary.lease.status_label }}
+              </el-tag>
+            </span>
+          </template>
+        </el-alert>
+      </div>
       <el-form :model="createForm" :rules="createRules" ref="createFormRef" label-width="100px">
         <el-form-item label="住户" prop="resident_id">
           <el-select
@@ -200,16 +291,51 @@
               :label="`${item.name} - ${item.id_card}`"
               :value="item.id"
             >
-              <span>{{ item.name }} - {{ item.id_card }}</span>
-              <el-tag
-                v-if="checkEmergencyOnly(item.total_unpaid_amount || 0)"
-                type="danger"
-                size="small"
-                effect="dark"
-                style="margin-left: 8px"
-              >
-                欠费超阈值，仅允许紧急维修
-              </el-tag>
+              <div class="resident-option">
+                <span class="option-main">{{ item.name }} - {{ item.id_card }}</span>
+                <div class="option-tags">
+                  <el-tag
+                    v-if="checkEmergencyOnly(item.total_unpaid_amount || 0)"
+                    type="danger"
+                    size="small"
+                    effect="dark"
+                  >
+                    欠费超阈值，仅允许紧急维修
+                  </el-tag>
+                  <el-tag
+                    v-else-if="item.total_unpaid_amount > 0"
+                    type="warning"
+                    size="small"
+                    effect="light"
+                  >
+                    欠费 {{ formatCurrency(item.total_unpaid_amount) }}
+                  </el-tag>
+                  <el-tag
+                    v-if="item.active_lease_status_label"
+                    :type="getLeaseTagType(item.active_lease_status)"
+                    size="small"
+                    effect="plain"
+                  >
+                    租约：{{ item.active_lease_status_label }}
+                  </el-tag>
+                  <el-tag
+                    v-if="item.is_lease_overdue"
+                    type="danger"
+                    size="small"
+                    effect="dark"
+                  >
+                    租约已逾期
+                  </el-tag>
+                  <el-tag
+                    v-else-if="item.is_lease_expiring"
+                    type="warning"
+                    size="small"
+                    effect="light"
+                  >
+                    租约即将到期
+                  </el-tag>
+                </div>
+              </div>
             </el-option>
           </el-select>
         </el-form-item>
@@ -527,7 +653,7 @@ import {
   addMaterial,
   deleteMaterial
 } from '@/api/maintenance'
-import { getResidents } from '@/api/residents'
+import { getResidents, getResidentSummary } from '@/api/residents'
 import {
   MAINTENANCE_STATUS,
   MAINTENANCE_TYPE,
@@ -552,6 +678,7 @@ const currentOrderId = ref(null)
 const selectedRows = ref([])
 const residentOptions = ref([])
 const residentLeases = ref([])
+const arrearsSummary = ref(null)
 const photos = ref([])
 const materials = ref([])
 const createFormRef = ref(null)
@@ -652,6 +779,16 @@ const hasCompletionPhoto = computed(() => {
   return photos.value.some(p => p.photo_type === 'completion')
 })
 
+const getLeaseTagType = (status) => {
+  switch (status) {
+    case 1: return 'success'
+    case 2: return 'warning'
+    case 3: return 'danger'
+    case 4: return 'primary'
+    default: return 'info'
+  }
+}
+
 const fetchData = async () => {
   loading.value = true
   try {
@@ -711,7 +848,7 @@ const searchResidents = async (query) => {
   }
 }
 
-const handleResidentChange = (residentId) => {
+const handleResidentChange = async (residentId) => {
   const resident = residentOptions.value.find(r => r.id === residentId)
   if (resident?.leases) {
     residentLeases.value = resident.leases.filter(l => l.status === 1)
@@ -719,6 +856,17 @@ const handleResidentChange = (residentId) => {
     residentLeases.value = []
   }
   createForm.lease_id = residentLeases.value[0]?.id || null
+
+  if (residentId) {
+    try {
+      const res = await getResidentSummary(residentId)
+      arrearsSummary.value = res.data
+    } catch (error) {
+      arrearsSummary.value = null
+    }
+  } else {
+    arrearsSummary.value = null
+  }
 
   if (isEmergencyOnly.value) {
     createForm.type = 2
@@ -735,6 +883,7 @@ const handleAdd = () => {
   createForm.contact_phone = ''
   createForm.appointment_time = ''
   residentLeases.value = []
+  arrearsSummary.value = null
   createFormRef.value?.resetFields()
   createDialogVisible.value = true
 }
@@ -1055,5 +1204,82 @@ onMounted(() => {
 
 .material-action {
   margin-top: 12px;
+}
+
+.alert-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.restriction-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(230, 162, 60, 0.3);
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.detail-row:last-child {
+  margin-bottom: 0;
+}
+
+.detail-label {
+  flex-shrink: 0;
+  width: 80px;
+  color: #909399;
+  text-align: right;
+  margin-right: 8px;
+}
+
+.detail-amount {
+  color: #f56c6c;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.detail-sub {
+  color: #909399;
+  margin-left: 4px;
+}
+
+.reason-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #606266;
+}
+
+.breakdown-list .late-fee {
+  color: #f56c6c;
+}
+
+.resident-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.option-main {
+  font-size: 14px;
+  color: #303133;
+}
+
+.option-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 </style>
