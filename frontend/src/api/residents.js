@@ -40,21 +40,28 @@ export function deleteResident(id) {
 
 export function getResidentSummary(id) {
   return request({
-    url: `/residents/${id}/summary`,
+    url: `/residents/${id}/arrears-summary`,
+    method: 'get'
+  })
+}
+
+export function getResidentQualification(id) {
+  return request({
+    url: `/residents/${id}/qualification-status`,
     method: 'get'
   })
 }
 
 export function getFamilyMembers(residentId) {
   return request({
-    url: `/residents/${residentId}/family-members`,
+    url: `/residents/${residentId}/family`,
     method: 'get'
   })
 }
 
 export function addFamilyMember(residentId, data) {
   return request({
-    url: `/residents/${residentId}/family-members`,
+    url: `/residents/${residentId}/family`,
     method: 'post',
     data
   })
@@ -70,7 +77,45 @@ export function updateFamilyMember(residentId, memberId, data) {
 
 export function deleteFamilyMember(residentId, memberId) {
   return request({
-    url: `/residents/${residentId}/family-members/${memberId}`,
+    url: `/resident-family/${memberId}`,
     method: 'delete'
+  })
+}
+
+export function getResidentLeases(id) {
+  return request({
+    url: `/residents/${id}/leases`,
+    method: 'get'
+  })
+}
+
+export function getResidentArrears(id, params) {
+  return request({
+    url: '/arrears',
+    method: 'get',
+    params: { resident_id: id, ...params }
+  })
+}
+
+export function getResidentMaintenanceOrders(id, limit) {
+  return request({
+    url: `/residents/${id}/maintenance-orders`,
+    method: 'get',
+    params: { limit: limit || 5 }
+  })
+}
+
+export function getResidentQualificationRecords(id) {
+  return request({
+    url: `/residents/${id}/qualification-records`,
+    method: 'get'
+  })
+}
+
+export function recordResidentPayment(residentId, data) {
+  return request({
+    url: `/residents/${residentId}/payment`,
+    method: 'post',
+    data
   })
 }

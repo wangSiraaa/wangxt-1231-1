@@ -1,4 +1,5 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { formatCurrency } from './constants'
 
 export function getArrearsThreshold() {
   const saved = localStorage.getItem('arrears_threshold')

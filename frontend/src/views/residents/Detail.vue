@@ -280,7 +280,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
@@ -298,9 +298,11 @@ import {
   showQualificationWarning 
 } from '@/utils/businessRules'
 import { 
-  getResident, getResidentSummary, 
+  getResident, getResidentSummary, getResidentQualification,
   getFamilyMembers, addFamilyMember as apiAddFamilyMember,
-  deleteFamilyMember as apiDeleteFamilyMember
+  deleteFamilyMember as apiDeleteFamilyMember,
+  getResidentLeases, getResidentMaintenanceOrders,
+  getResidentQualificationRecords, recordResidentPayment
 } from '@/api/residents'
 import { createMaintenanceOrder } from '@/api/maintenance'
 
@@ -344,18 +346,21 @@ const familyForm = reactive({
 const loadData = async () => {
   loading.value = true
   try {
-    const [residentData, summaryData, familyData] = await Promise.all([
+    const [residentData, summaryData, familyData, leasesData, ordersData, qualStatusData] = await Promise.all([
       getResident(residentId.value),
       getResidentSummary(residentId.value),
-      getFamilyMembers(residentId.value)
+      getFamilyMembers(residentId.value),
+      getResidentLeases(residentId.value),
+      getResidentMaintenanceOrders(residentId.value, 5),
+      getResidentQualification(residentId.value)
     ])
     
     resident.value = residentData.data || mockResident()
     summary.value = summaryData.data || mockSummary()
     familyMembers.value = familyData.data || mockFamilyMembers()
-    leases.value = mockLeases()
-    qualificationRecord.value = mockQualificationRecord()
-    recentOrders.value = mockRecentOrders()
+    leases.value = leasesData.data || mockLeases()
+    recentOrders.value = ordersData.data || mockRecentOrders()
+    qualificationRecord.value = qualStatusData.data?.latest_record || mockQualificationRecord()
   } catch (e) {
     console.error('Load data error:', e)
     resident.value = mockResident()
@@ -465,11 +470,17 @@ const submitPayment = async () => {
   }
   
   try {
+    await recordResidentPayment(residentId.value, {
+      amount: paymentForm.amount,
+      payment_method: paymentForm.method,
+      remark: paymentForm.remark
+    })
     ElMessage.success('缴费登记成功')
     paymentDialogVisible.value = false
     loadData()
   } catch (e) {
     console.error('Payment error:', e)
+    ElMessage.error(e.response?.data?.message || '缴费失败')
   }
 }
 

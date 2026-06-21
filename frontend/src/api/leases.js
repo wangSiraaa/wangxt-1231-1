@@ -85,3 +85,11 @@ export function rejectRenewal(id, data) {
     data
   })
 }
+
+export function submitRenewalApplication(data) {
+  return request({
+    url: '/lease-renewals',
+    method: 'post',
+    data
+  })
+}

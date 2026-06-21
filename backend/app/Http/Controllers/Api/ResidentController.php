@@ -161,4 +161,84 @@ class ResidentController extends Controller
             'active_lease' => $resident->activeLease,
         ]);
     }
+
+    public function recordPayment(Request $request, Resident $resident)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_method' => 'required|in:1,2,3,4',
+            'remark' => 'nullable|string',
+        ]);
+
+        $unpaidArrears = $resident->unpaidArrears()->orderBy('bill_period', 'asc')->get();
+
+        if ($unpaidArrears->isEmpty()) {
+            return response()->json(['message' => '该住户没有待缴账单'], 400);
+        }
+
+        $remainingAmount = $validated['amount'];
+        $payments = [];
+        $paymentMethodMap = [1 => '现金', 2 => '微信', 3 => '支付宝', 4 => '银行转账'];
+
+        foreach ($unpaidArrears as $arrear) {
+            if ($remainingAmount <= 0) {
+                break;
+            }
+
+            $payAmount = min($remainingAmount, $arrear->unpaid_amount);
+
+            $payment = $arrear->recordPayment(
+                $payAmount,
+                $paymentMethodMap[$validated['payment_method']] ?? '现金',
+                null,
+                $validated['remark'] ?? null,
+                $request->user()->id
+            );
+
+            $payments[] = $payment;
+            $remainingAmount -= $payAmount;
+        }
+
+        return response()->json([
+            'message' => '缴费成功',
+            'paid_amount' => $validated['amount'] - $remainingAmount,
+            'remaining_amount' => $remainingAmount,
+            'payments' => $payments,
+            'total_unpaid' => $resident->totalUnpaidAmount(),
+        ]);
+    }
+
+    public function leases(Resident $resident)
+    {
+        $leases = $resident->leases()->orderBy('created_at', 'desc')->get();
+
+        $leases->transform(function ($lease) {
+            $lease->total_arrears = $lease->calculateTotalArrears();
+            $lease->is_expiring = $lease->isExpiring();
+            return $lease;
+        });
+
+        return response()->json($leases);
+    }
+
+    public function maintenanceOrders(Resident $resident, Request $request)
+    {
+        $limit = $request->limit ?? 5;
+        $orders = $resident->maintenanceOrders()
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->get();
+
+        return response()->json($orders);
+    }
+
+    public function qualificationRecords(Resident $resident)
+    {
+        $records = $resident->qualificationRecords()
+            ->with('batch')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($records);
+    }
 }

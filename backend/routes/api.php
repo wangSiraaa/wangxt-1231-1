@@ -19,6 +19,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/resident-family/{member}', [App\Http\Controllers\Api\ResidentController::class, 'deleteFamilyMember']);
     Route::get('/residents/{resident}/arrears-summary', [App\Http\Controllers\Api\ResidentController::class, 'arrearsSummary']);
     Route::get('/residents/{resident}/qualification-status', [App\Http\Controllers\Api\ResidentController::class, 'qualificationStatus']);
+    Route::get('/residents/{resident}/leases', [App\Http\Controllers\Api\ResidentController::class, 'leases']);
+    Route::get('/residents/{resident}/maintenance-orders', [App\Http\Controllers\Api\ResidentController::class, 'maintenanceOrders']);
+    Route::get('/residents/{resident}/qualification-records', [App\Http\Controllers\Api\ResidentController::class, 'qualificationRecords']);
+    Route::post('/residents/{resident}/payment', [App\Http\Controllers\Api\ResidentController::class, 'recordPayment']);
 
     Route::apiResource('leases', App\Http\Controllers\Api\LeaseController::class);
     Route::get('/leases/{lease}/arrears', [App\Http\Controllers\Api\LeaseController::class, 'arrears']);
